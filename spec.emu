@@ -1,39 +1,50 @@
 <!doctype html>
 <meta charset="utf8">
-<link rel="stylesheet" href="./spec.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.4/styles/github.min.css">
-<script src="./spec.js"></script>
 <pre class="metadata">
-title: Proposal Title Goes Here
-stage: -1
-contributors: Your Name(s) Here
+title: Promise.settle
+stage: 0
+contributors: Will Stamper
 </pre>
 
-<emu-clause id="sec-demo-clause">
-  <h1>This is an emu-clause</h1>
-  <p>This is an algorithm:</p>
+<emu-import href="https://tc39.es/ecma262/spec/A_index.html"></emu-import>
+<emu-import href="https://tc39.es/ecma262/spec/A_web-reality.html"></emu-import>
+
+<emu-clause id="sec-promise.settle" aoid="Promise.settle">
+  <h1>Promise.settle ( _promise_ )</h1>
+  <p>This function returns a promise that is fulfilled with a settlement object describing the outcome of the input value when treated as a promise.</p>
   <emu-alg>
-    1. Let _proposal_ be *undefined*.
-    1. If IsAccepted(_proposal_) is *true*, then
-      1. Let _stage_ be *0*<sub>ℤ</sub>.
-    1. Else,
-      1. Let _stage_ be *-1*<sub>ℤ</sub>.
-    1. Return ? ToString(_stage_).
+    1. Let _C_ be the *this* value.
+    1. If IsPromise(_promise_) is *false*, then
+      1. Let _rejection_ be a new *TypeError* exception.
+      1. Return PromiseReject(_C_, _rejection_).
+    1. Let _promiseCapability_ be ? NewPromiseCapability(_C_).
+    1. Let _fulfillReaction_ be a new Abstract Closure with parameters (_v_) that captures _promiseCapability_ and performs the following steps when called:
+      1. Let _obj_ be OrdinaryObjectCreate(%Object.prototype%).
+      1. Perform ! CreateDataPropertyOrThrow(_obj_, *"status"*, *"fulfilled"*).
+      1. Perform ! CreateDataPropertyOrThrow(_obj_, *"value"*, _v_).
+      1. Perform ? Call(_promiseCapability_.[[Resolve]], *undefined*, « _obj_ »).
+      1. Return *undefined*.
+    1. Let _rejectReaction_ be a new Abstract Closure with parameters (_r_) that captures _promiseCapability_ and performs the following steps when called:
+      1. Let _obj_ be OrdinaryObjectCreate(%Object.prototype%).
+      1. Perform ! CreateDataPropertyOrThrow(_obj_, *"status"*, *"rejected"*).
+      1. Perform ! CreateDataPropertyOrThrow(_obj_, *"reason"*, _r_).
+      1. Perform ? Call(_promiseCapability_.[[Resolve]], *undefined*, « _obj_ »).
+      1. Return *undefined*.
+    1. Let _fulfillHandler_ be CreateBuiltinFunction(_fulfillReaction_, 1, *""*, « »).
+    1. Let _rejectHandler_ be CreateBuiltinFunction(_rejectReaction_, 1, *""*, « »).
+    1. Perform PerformPromiseThen(_promise_, _fulfillHandler_, _rejectHandler_).
+    1. Return _promiseCapability_.[[Promise]].
   </emu-alg>
 </emu-clause>
 
-<emu-clause id="sec-is-accepted" type="abstract operation">
-  <h1>
-      IsAccepted (
-        _proposal_: an ECMAScript language value
-      ): a Boolean
-  </h1>
-  <dl class="header">
-    <dt>description</dt>
-    <dd>Tells you if the proposal was accepted</dd>
-  </dl>
-  <emu-alg>
-    1. If _proposal_ is not a String, or is not accepted, return *false*.
-    1. Return *true*.
-  </emu-alg>
+<emu-clause id="sec-promise.settle-length" aoid="Promise.settle.length">
+  <h1>Promise.settle.length</h1>
+  <p>The value of `Promise.settle.length` is 1.</p>
+  <p>This property has the attributes { [[Writable]]: *false*, [[Enumerable]]: *false*, [[Configurable]]: *true* }.</p>
+</emu-clause>
+
+<emu-clause id="sec-promise.settle-name" aoid="Promise.settle.name">
+  <h1>Promise.settle.name</h1>
+  <p>The value of `Promise.settle.name` is "settle".</p>
+  <p>This property has the attributes { [[Writable]]: *false*, [[Enumerable]]: *false*, [[Configurable]]: *true* }.</p>
 </emu-clause>

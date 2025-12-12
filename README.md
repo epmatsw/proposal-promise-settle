@@ -1,50 +1,132 @@
-# template-for-proposals
+# Promise.settle
 
-A repository template for ECMAScript proposals.
+ECMAScript Proposal, specs, and reference implementation for `Promise.settle`.
 
-## Before creating a proposal
+Spec drafted by [@epmatsw](https://github.com/epmatsw).
 
-Please ensure the following:
-  1. You have read the [process document](https://tc39.github.io/process-document/)
-  1. You have reviewed the [existing proposals](https://github.com/tc39/proposals/)
-  1. You are aware that your proposal requires being a member of TC39, or locating a TC39 delegate to “champion” your proposal
+This proposal is currently [Stage 0](https://tc39.es/process-document/) of the [TC39 Process](https://tc39.github.io/process-document/).
 
-## Create your proposal repo
+## Rationale
 
-Follow these steps:
-  1. Click the green [“use this template”](https://github.com/tc39/template-for-proposals/generate) button in the repo header. (Note: Do not fork this repo in GitHub's web interface, as that will later prevent transfer into the TC39 organization)
-  1. Update ecmarkup and the biblio to the latest version: `npm install --save-dev ecmarkup@latest && npm install --save-dev --save-exact @tc39/ecma262-biblio@latest`.
-  1. Go to your repo settings page:
-      1. Under “General”, under “Features”, ensure “Issues” is checked, and disable “Wiki”, and “Projects” (unless you intend to use Projects)
-      1. Under “Pull Requests”, check “Always suggest updating pull request branches” and “automatically delete head branches”
-      1. Under the “Pages” section on the left sidebar, and set the source to “deploy from a branch”, select “gh-pages” in the branch dropdown, and then ensure that “Enforce HTTPS” is checked.
-      1. Under the “Actions” section on the left sidebar, under “General”, select “Read and write permissions” under “Workflow permissions” and click “Save”
-  1. [“How to write a good explainer”][explainer] explains how to make a good first impression.
+`Promise.settle` settles a single promise and returns a settlement object: `{ status: 'fulfilled', value }` or `{ status: 'rejected', reason }`.
 
-      > Each TC39 proposal should have a `README.md` file which explains the purpose
-      > of the proposal and its shape at a high level.
-      >
-      > ...
-      >
-      > The rest of this page can be used as a template ...
+It's like `Promise.allSettled`, but for a single value.
 
-      Your explainer can point readers to the `index.html` generated from `spec.emu`
-      via markdown like
+### The Problem
 
-      ```markdown
-      You can browse the [ecmarkup output](https://ACCOUNT.github.io/PROJECT/)
-      or browse the [source](https://github.com/ACCOUNT/PROJECT/blob/HEAD/spec.emu).
-      ```
+Currently, if you want to get a settlement object for a single promise, you have to use verbose workarounds:
 
-      where *ACCOUNT* and *PROJECT* are the first two path elements in your project's Github URL.
-      For example, for github.com/**tc39**/**template-for-proposals**, *ACCOUNT* is “tc39”
-      and *PROJECT* is “template-for-proposals”.
+```javascript
+// Using Promise.allSettled (wasteful array allocation)
+const [result] = await Promise.allSettled([promise]);
 
+// Manual try/catch (verbose and error-prone)
+let result;
+try {
+  result = { status: "fulfilled", value: await promise };
+} catch (e) {
+  result = { status: "rejected", reason: e };
+}
+```
 
-## Maintain your proposal repo
+Both approaches are unnecessarily verbose for such a common operation.
 
-  1. Make your changes to `spec.emu` (ecmarkup uses HTML syntax, but is not HTML, so I strongly suggest not naming it “.html”)
-  1. Any commit that makes meaningful changes to the spec, should run `npm run build` to verify that the build will succeed and the output looks as expected.
-  1. Whenever you update `ecmarkup`, run `npm run build` to verify that the build will succeed and the output looks as expected.
+### Use Cases
 
-  [explainer]: https://github.com/tc39/how-we-work/blob/HEAD/explainer.md
+- **Graceful error handling**: Capture errors without throwing, allowing inspection of the error before deciding how to proceed
+- **Conditional re-throwing**: Examine an error and decide whether to re-throw, wrap, or handle it
+- **Testing assertions**: Assert on the settlement status and value/reason without try/catch boilerplate
+- **Error aggregation**: Collect multiple settlement results for later processing or reporting
+
+## Examples
+
+```javascript
+// Settling a fulfilled promise
+const success = await Promise.settle(Promise.resolve("hello"));
+// { status: 'fulfilled', value: 'hello' }
+
+// Settling a rejected promise
+const failure = await Promise.settle(Promise.reject(new Error("oops")));
+// { status: 'rejected', reason: Error: oops }
+
+// Settling a plain value (non-promise)
+const plain = await Promise.settle(42);
+// { status: 'fulfilled', value: 42 }
+```
+
+### Real-World Example
+
+```javascript
+async function fetchUserData(userId) {
+  const result = await Promise.settle(api.getUser(userId));
+
+  if (result.status === "rejected") {
+    if (result.reason instanceof NotFoundError) {
+      return null; // User doesn't exist, return null
+    }
+    throw result.reason; // Re-throw unexpected errors
+  }
+
+  return result.value;
+}
+```
+
+## Naming
+
+The name "settle" is chosen for consistency with the existing `Promise.allSettled` method and the established specification terminology. In the ECMAScript specification, a promise is said to be "settled" when it is either fulfilled or rejected (i.e., no longer pending). This method "settles" a single value and returns its settlement descriptor.
+
+## Specification
+
+- [Ecmarkup source](https://github.com/epmatsw/proposal-promise-settle/blob/HEAD/spec.emu)
+- [HTML version](https://epmatsw.github.io/proposal-promise-settle/)
+
+## Reference Implementation
+
+A simple reference implementation:
+
+```javascript
+Promise.settle = function settle(value) {
+  return this.resolve(value).then(
+    (value) => ({ status: "fulfilled", value }),
+    (reason) => ({ status: "rejected", reason }),
+  );
+};
+```
+
+## FAQ
+
+### Why not just use `Promise.allSettled([p])[0]`?
+
+While `Promise.allSettled` can be used to settle a single promise, it has two main drawbacks:
+
+1.  **Overhead**: It requires creating an intermediate array and returns another array, which is inefficient for a single operation.
+2.  **Readability**: It's less direct and can obscure the intent of settling just one promise.
+
+`Promise.settle` provides a more direct, readable, and performant API for this common use case.
+
+### Why not use a userland helper function?
+
+While a helper function is a viable workaround, standardizing `Promise.settle` offers several advantages:
+
+- **Consistency**: Provides a standard, universally available way to settle a promise.
+- **Discoverability**: Easier for developers to find and use than a custom utility.
+- **Engine-level Optimizations**: Native implementations can be more performant than userland code.
+
+### What is the relationship to the `Promise.try` proposal?
+
+`Promise.try` is focused on starting a promise chain from a synchronous function that might throw. `Promise.settle` is focused on the _end_ of a promise's lifecycle—inspecting its outcome. They are complementary proposals that address different parts of promise-based workflows.
+
+## Prior Art
+
+The concept of representing a settled result as a sum type (either success or failure) is well-established in many languages:
+
+- **Rust**: [`Result<T, E>`](https://doc.rust-lang.org/std/result/)
+- **Swift**: [`Result<Success, Failure>`](https://developer.apple.com/documentation/swift/result)
+- **Kotlin**: [`Result<T>`](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/-result/)
+- **Haskell**: [`Either a b`](https://hackage.haskell.org/package/base-4.16.1.0/docs/Data-Either.html)
+
+`Promise.settle` brings this pattern to the forefront for single promises in JavaScript, aligning with the precedent set by `Promise.allSettled`.
+
+## Champion
+
+This proposal is authored by Will Stamper and is seeking a TC39 champion to advance it through the process.
